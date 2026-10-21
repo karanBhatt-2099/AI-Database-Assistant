@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ai-db-assistant
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL        # Neon URL for readonly_user (NOT the admin user)
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b

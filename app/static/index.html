@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ask your database</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f4;--fg:#1c2321;--mut:#66706b;--card:#fff;--line:#dfe3de;--acc:#0d6b5c;--err:#a4361f}
+@media(prefers-color-scheme:dark){:root{--bg:#141817;--fg:#e8ece9;--mut:#93a09a;--card:#1c2220;--line:#2d3633;--acc:#5fc9b4;--err:#f08a73}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Georgia,"Times New Roman",serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 120px}
+h1{font:600 1.5rem/1.2 system-ui,sans-serif;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 16px;font-family:system-ui,sans-serif;font-size:.9rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.chips button{font:.85rem system-ui,sans-serif;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.chips button:hover{border-color:var(--acc)}
+.msg{margin:14px 0}
+.user{font:600 1rem system-ui,sans-serif;border-left:3px solid var(--acc);padding-left:10px}
+.bot{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+.bot.refused,.bot.error{border-color:var(--err)}
+.bot.clarify{border-style:dashed;border-color:var(--acc)}
+.meta{font:.78rem system-ui,sans-serif;color:var(--mut);margin-top:8px}
+details{margin-top:10px;font:.85rem system-ui,sans-serif}
+pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;font:.8rem/1.4 ui-monospace,monospace;white-space:pre-wrap}
+.tbl{overflow:auto;max-height:300px;margin-top:10px}
+table{border-collapse:collapse;font:.85rem system-ui,sans-serif;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--card)}
+canvas{max-height:320px;margin-top:12px}
+form{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--line);padding:12px 16px}
+.row{max-width:860px;margin:0 auto;display:flex;gap:8px}
+input{flex:1;font:1rem system-ui,sans-serif;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+input:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.send{font:600 1rem system-ui,sans-serif;background:var(--acc);color:var(--bg);border:0;border-radius:6px;padding:0 18px;cursor:pointer}
+.send:disabled{opacity:.5}
+</style></head>
+<body><main>
+<h1>Ask your database</h1>
+<p class="sub">Sample shop data: regions, customers, products, orders, order items (synthetic, 2024–2025). Read-only.</p>
+<div class="chips" id="chips"></div>
+<div id="log" aria-live="polite"></div>
+</main>
+<form id="f"><div class="row">
+<input id="q" maxlength="500" placeholder="Ask a question about sales, products or customers" autocomplete="off" required>
+<button class="send" id="send">Ask</button></div></form>
+<script>
+const EX=["Which products generated the most revenue?","How did monthly sales change across regions?",
+"Which customers bought from more than 3 categories?","Show me the best ones","Delete all cancelled orders"];
+const log=document.getElementById('log'),q=document.getElementById('q'),send=document.getElementById('send');
+let history=[];
+EX.forEach(t=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>{q.value=t;ask(t)};chips.appendChild(b)});
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e};
+document.getElementById('f').onsubmit=e=>{e.preventDefault();ask(q.value.trim())};
+
+async function ask(text){
+  if(!text)return; q.value='';send.disabled=true;
+  log.appendChild(el('div','msg user',text));
+  const box=el('div','msg bot','Thinking…');log.appendChild(box);box.scrollIntoView();
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:text,history:history.slice(-6)})});
+    const d=await r.json();
+    if(!r.ok)d.status='error',d.message=d.message||d.detail||'Request failed.';
+    render(box,d);
+    history.push({role:'user',content:text},{role:'assistant',content:d.message||''});
+  }catch(err){render(box,{status:'error',message:'Could not reach the server.'})}
+  send.disabled=false;box.scrollIntoView();
+}
+function render(box,d){
+  box.textContent='';box.className='msg bot '+d.status;
+  box.appendChild(el('div','',d.message));
+  if(d.status==='ok'&&d.rows&&d.rows.length){
+    if(d.chart&&d.chart.type!=='none')chart(box,d);
+    box.appendChild(table(d));
+  }
+  if(d.sql){const dt=el('details');dt.appendChild(el('summary','','SQL used'));dt.appendChild(el('pre','',d.sql));box.appendChild(dt)}
+  if(d.latency_ms)box.appendChild(el('div','meta',`${d.rows?d.rows.length+' rows · ':''}${(d.latency_ms/1000).toFixed(1)}s${d.attempts>1?' · self-corrected':''}`));
+}
+function table(d){
+  const w=el('div','tbl'),t=el('table'),h=el('tr');
+  d.columns.forEach(c=>h.appendChild(el('th','',c)));t.appendChild(h);
+  d.rows.slice(0,100).forEach(r=>{const tr=el('tr');r.forEach(v=>tr.appendChild(el('td','',v===null?'':v)));t.appendChild(tr)});
+  w.appendChild(t);return w;
+}
+function chart(box,d){
+  const {type,x,y,series}=d.chart,xi=d.columns.indexOf(x),yi=d.columns.indexOf(y),si=series?d.columns.indexOf(series):-1;
+  const labels=[...new Set(d.rows.map(r=>r[xi]))];
+  const names=si<0?[y]:[...new Set(d.rows.map(r=>r[si]))];
+  const pal=['#0d6b5c','#d1842a','#4a6fa5','#a4361f','#7a5c99','#6b8e23'];
+  const datasets=names.map((n,i)=>({label:String(n),borderColor:pal[i%6],backgroundColor:pal[i%6],tension:.25,
+    data:labels.map(l=>{const r=d.rows.find(r=>r[xi]===l&&(si<0||r[si]===n));return r?r[yi]:null})}));
+  const c=el('canvas');box.appendChild(c);
+  new Chart(c,{type,data:{labels,datasets},options:{responsive:true,plugins:{legend:{display:names.length>1}}}});
+}
+</script></body></html>
