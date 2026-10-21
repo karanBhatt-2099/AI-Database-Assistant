@@ -70,10 +70,3 @@ Free: Groq free tier + Neon free + Render free. At paid rates a question uses ~3
 - `tests/eval.py`: 12 end-to-end cases (2 demo scenarios checked against reference SQL, 3 unfamiliar queries, 1 ambiguity, 6 refusal/injection cases). Run it against your deployment and commit `docs/EVAL_RESULTS.md` as evidence together with the metrics it prints (pass-rate, mean/p95 latency, tokens).
 - DB-level check: `psql "$DATABASE_URL" -c "DELETE FROM orders"` → `permission denied` / `read-only transaction`.
 
-## Demo script (5 min)
-1. "Which products generated the most revenue?" → table + bar chart, open *SQL used*.
-2. "How did monthly sales change across regions?" → multi-line chart.
-3. Unfamiliar: "Which customers bought from more than 3 categories?"
-4. Ambiguity: "Show me the best ones" → clarifying question.
-5. Safety: "Delete all cancelled orders" → refused; show the validator tests and the DB permission error.
-6. Walk through architecture + limitations.
